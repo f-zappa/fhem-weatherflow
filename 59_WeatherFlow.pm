@@ -306,7 +306,6 @@ weatherflow_Attr($$$)
 =item summary    Receive local weather data from a WeatherFlow station 
 =item summary_DE Wetterstation von WeatherFlow auslesen
 =begin html
-
 <a name="WeatherFlow"></a>
 <h3>WeatherFlow</h3>
 <ul>
@@ -329,7 +328,7 @@ WeatherFlow serial numbers visible in your network. You will see at least one
 hub instance ("HB-xxxxxxxx") and either one Tempest instance ("ST-xxxxxxxx") or the
 Sky and Air instances ("SK-xxxxxxxx" and "AR-xxxxxxxx"). Most likely you will only see
 your own devices, otherwise see the stickers on your hardware to figure out the
-serial numbers. The apply these to the module:
+serial numbers. Then apply these to the module:
 <br><br>
 Example: <code>attr wetterstation serials HB-xxxxxxxx ST-xxxxxxxx</code>
 <br><br>
@@ -354,6 +353,57 @@ if needed.</li>
 <li><a href="#disable">disable</a></li>
 <li><a href="#disabledForIntervals">disabledForIntervals</a></li>
 </ul><br>
-
 =end html
+
+=begin html_DE
+<a name="WeatherFlow"></a>
+<h3>WeatherFlow</h3>
+<ul>
+  Dieses Modul emfaengt Broadcast-Nachrichten, die von einem WeatherFlow-Hub gesendet
+  werden. Es wurde entwickelt und getestet fuer die 
+  <a href="https://weatherflow.com/tempest-weather-system/">
+  Tempest</a>-Wetterstation, sollte aber auch mit den aelteren
+  WeatherFlow Smart Weather Stationen arbeiten.
+  Falls Docker eingesetzt wird, muss der Port 50222/udp in den Container gemappt werden.
+<br><br>
+</ul>
+<a name="WeatherFlow_Define"></a>
+<b>Define</b>
+<ul>
+<code>define &lt;name&gt; weatherflow</code>
+<br><br>
+Example: <code>define wetterstation weatherflow</code>
+<br><br>
+Nach der Definition werden die Seriennummern alle im lokalen Netzwerk sichtbaren 
+WeatherFlow-Geraete im Reading "known_serials" gesammelt. Darunter sollte mindestens
+ein Hub ("HB-xxxxxxxx") and entweder ein Tempest-Sensor ("ST-xxxxxxxx") oder die
+Sky- and Air-Sensoren  ("SK-xxxxxxxx" and "AR-xxxxxxxx") sein. Wahrscheinlich sieht
+man nur die eigenen Devices, ansonsten helfen die Aufkleber auf der Hardware.
+Die Seriennummern werden dann in das Modul eingetragen:
+<br><br>
+Example: <code>attr wetterstation serials HB-xxxxxxxx ST-xxxxxxxx</code>
+<br><br>
+</ul>
+<a name="weatherflow_Attr"></a>
+<b>Attr</b>
+<ul>
+<li>serials<br>
+Die Hardware-Seriennummern sind wichtig, da der Hub unter Umstaenden mehrere 
+Wetterstationen empfaengt. Hier sollten nur eine Tempest ODER eine Kombination
+Air-Sky eingetragen sein, da bei mehreren Geraeten die Daten wechselseitig
+ueberschrieben werden. Auch die Hub-Seriennummer kann hinzugefuegt werden, um
+dessen Daten auslesen zu koennen.
+<li>altitude<br>
+Die Hoehe wird benoetigt, um den lokal gemessenen Luftdruck auf Meereshoehe
+umzurechnen. Ist dieser Wert hier nicht gesetzt, wird das Attribut
+<i>altitude</i> im <a href="#global">global device</a> verwendet, wo er eigentlich auch
+hingehoert. Andererseits kann dieser Wert hier ueberschrieben werden (z.B. falls die
+Hoehe der Wetterstation sich von der global gesetzten Hoehe stark unterscheidet).
+<li>port<br>
+Normalerweise uebertraegt der WeatherFlow-Hub auf udp/50222, aber falls noetig, kann
+dies hier geaendert werden.</li>
+<li><a href="#disable">disable</a></li>
+<li><a href="#disabledForIntervals">disabledForIntervals</a></li>
+</ul><br>
+=end html_DE
 =cut
