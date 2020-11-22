@@ -306,6 +306,7 @@ weatherflow_Attr($$$)
 =item summary    Receive local weather data from a WeatherFlow station 
 =item summary_DE Wetterstation von WeatherFlow auslesen
 =begin html
+
 <a name="WeatherFlow"></a>
 <h3>WeatherFlow</h3>
 <ul>
@@ -406,4 +407,5 @@ dies hier geaendert werden.</li>
 <li><a href="#disabledForIntervals">disabledForIntervals</a></li>
 </ul><br>
 =end html_DE
+
 =cut
