@@ -1,9 +1,24 @@
-
-# $Id: 59_weatherflow.pm 
 #
+# $Id: 59_WeatherFlow.pm 2020-11-23 f-zappa
+#
+# #####
 # captures UDP broadcast messages sent by a weatherflow hub
+# designed for and tested with tempest weather station
+# should also support older weatherflow smart weather station (untested yet)
+#
+# #####
+# Author: Uli Baumann <fhem at uli-baumann dot de>
+# Source: https://github.com/f-zappa/fhem-weatherflow
 # API reference: https://weatherflow.github.io/Tempest/api/udp/v143/
 #
+# #####
+# version history
+# v0.2 2020-11-23
+# * documentation was improved
+# v0.1 2020-11-22
+# * initial implementation; basic functionality
+# * much of the code was "borrowed" from 37_dash_dhcp.pm by justme1968
+
 package main;
 
 use strict;
@@ -12,13 +27,11 @@ use feature "switch";
 use JSON;
 use IO::Socket::INET;
 
-sub
-weatherflow_Initialize($)
-{
+sub weatherflow_Initialize($) {
   my ($hash) = @_;
   $hash->{ReadFn}   = "weatherflow_Read";
   $hash->{DefFn}    = "weatherflow_Define";
-  $hash->{NOTIFYDEV} = "global";
+  $hash->{NOTIFYDEV}= "global";
   $hash->{NotifyFn} = "weatherflow_Notify";
   $hash->{UndefFn}  = "weatherflow_Undefine";
   $hash->{AttrFn}   = "weatherflow_Attr";
@@ -27,9 +40,7 @@ weatherflow_Initialize($)
 
 #####################################
 
-sub
-weatherflow_Define($$)
-{
+sub weatherflow_Define($$) {
   my ($hash, $def) = @_;
   my @a = split("[ \t][ \t]*", $def);
   return "Usage: define <name> weatherflow"  if(@a != 2);
@@ -43,9 +54,7 @@ weatherflow_Define($$)
   return undef;
 }
 
-sub
-weatherflow_Notify($$)
-{
+sub weatherflow_Notify($$) {
   my ($hash,$dev) = @_;
   return if($dev->{NAME} ne "global");
   return if(!grep(m/^INITIALIZED|REREADCFG$/, @{$dev->{CHANGED}}));
@@ -53,9 +62,7 @@ weatherflow_Notify($$)
   return undef;
 }
 
-sub
-weatherflow_startListener($)
-{
+sub weatherflow_startListener($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
   weatherflow_stopListener($hash);
@@ -78,9 +85,7 @@ weatherflow_startListener($)
   }
 }
 
-sub
-weatherflow_stopListener($)
-{
+sub weatherflow_stopListener($) {
   my ($hash) = @_;
   my $name   = $hash->{NAME};
   RemoveInternalTimer($hash);
@@ -94,24 +99,20 @@ weatherflow_stopListener($)
   $hash->{LAST_DISCONNECT} = FmtDateTime( gettimeofday() );
 }
 
-sub
-weatherflow_Undefine($$)
-{
+sub weatherflow_Undefine($$) {
   my ($hash, $arg) = @_;
   weatherflow_stopListener($hash);
   return undef;
 }
 
-sub weatherflow_slp($$$)
-{
+sub weatherflow_slp($$$) {
+  # convert station pressure to sea level pressure
   # https://de.wikipedia.org/wiki/Barometrische_H%C3%B6henformel
   my ($pressure,$temp,$alt) = @_;
   return sprintf("%.2f", $pressure*(($temp+273.15)/($temp+273.15+0.0065*$alt))**(-5.255));
 }
 
-sub
-weatherflow_Parse($$;$)
-{
+sub weatherflow_Parse($$;$) {
   my ($hash,$rawdata,$peerhost) = @_;
   my $name = $hash->{NAME};
     Log3 $name, 5, "$name: $rawdata";
@@ -147,7 +148,7 @@ weatherflow_Parse($$;$)
         readingsEndUpdate($hash,1)
       }
       when("light_debug") { # LIGHTNING DEBUGGING DATA
-        # ignore this message
+        # ignore this message - not documented in API
       }
       when("hub_status") { # HUB STATUS
         readingsBeginUpdate($hash);
@@ -156,7 +157,7 @@ weatherflow_Parse($$;$)
         readingsBulkUpdate($hash,"hub_rssi",$message->{rssi});
         readingsBulkUpdate($hash,"hub_rssi",$message->{rssi});
         readingsEndUpdate($hash,1)
-	# message has more fields, though don't seem useful. see weatherflow docs.
+	# message has more fields, though don't seem useful. see weatherflow API.
       }
       when("obs_st") { # WEATHER OBSERVATION (TEMPEST)
         my $alt = 
@@ -225,14 +226,15 @@ weatherflow_Parse($$;$)
         readingsBulkUpdate($hash,$sensor."_firmware",$message->{firmware_revision});
         readingsBulkUpdate($hash,$sensor."_rssi",$message->{rssi});
         readingsBulkUpdate($hash,$sensor."_hub_rssi",$message->{hub_rssi});
-        # todo: evaluate status
+        # todo: evaluate status, see API
         readingsBulkUpdate($hash,$sensor."_status",$message->{sensor_status});
         readingsBulkUpdate($hash,$sensor."_debug",$message->{debug});
         readingsEndUpdate($hash,1)
       }
-      #default {
+      default {
+        Log3 $name,3,"$name received unknown message type <$message->{type}>";
       #	readingsSingleUpdate($hash,"rawdata",$rawdata,1)
-      #}	
+      }	
     }
   }
   # add "new" serial numbers to reading
@@ -242,9 +244,7 @@ weatherflow_Parse($$;$)
     }
 }
 
-sub
-weatherflow_Read($)
-{
+sub weatherflow_Read($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
   my $len;
@@ -258,15 +258,12 @@ weatherflow_Read($)
   weatherflow_Parse($hash, $buf);
 }
 
-sub
-weatherflow_Attr($$$)
-{
+sub weatherflow_Attr($$$) {
   my ($cmd, $name, $attrName, $attrVal) = @_;
-
   my $orig = $attrVal;
-
   my $hash = $defs{$name};
   if( $attrName eq "disable" ) {
+    # start/stop device if this value is changed
     if( $cmd eq 'set' && $attrVal ne "0" ) {
       weatherflow_stopListener($hash);
     } else {
@@ -276,34 +273,29 @@ weatherflow_Attr($$$)
   } elsif( $attrName eq "disabledForIntervals" ) {
     delete $attr{$name}{$attrName};
     $attr{$name}{$attrName} = $attrVal if( $cmd eq 'set' );
-
     weatherflow_startListener($hash);
-
   } elsif( $attrName eq "port" ) {
     delete $attr{$name}{$attrName};
     $attr{$name}{$attrName} = $attrVal if( $cmd eq 'set' );
-
     weatherflow_startListener($hash);
   } elsif( $attrName eq "altitude" ) {
     delete $attr{$name}{$attrName};
     $attr{$name}{$attrName} = $attrVal if( $cmd eq 'set' );
   }
-
   if( $cmd eq 'set' ) {
     if( $orig ne $attrVal ) {
       $attr{$name}{$attrName} = $attrVal;
       return $attrName ." set to ". $attrVal;
     }
   }
-
   return;
 }
-
 
 1;
 
 =pod
-=item summary    Receive local weather data from a WeatherFlow station 
+=item device
+=item summary Receive local weather data from a WeatherFlow station 
 =item summary_DE Wetterstation von WeatherFlow auslesen
 =begin html
 
@@ -313,99 +305,98 @@ weatherflow_Attr($$$)
   This module listens to broadcast messages sent out by the WeatherFlow hub. It has been
   designed and tested for the <a href="https://weatherflow.com/tempest-weather-system/">
   Tempest Weather System</a>, but should also be capable to work with the older
-  WeatherFlow Smart Weather Station.
+  WeatherFlow Smart Weather Station.<br>
   Docker users please note that you will need to map udp port 50222 to the FHEM container.
-<br><br>
-</ul>
+<br></ul>
+
 <a name="WeatherFlow_Define"></a>
-<b>Define</b>
+<h4>Define</h4>
 <ul>
-<code>define &lt;name&gt; weatherflow</code>
+  <code>define &lt;name&gt; weatherflow</code>
 <br><br>
-Example: <code>define wetterstation weatherflow</code>
-<br><br>
-After defining the device, watch the "known_serials" reading which will collect all
-WeatherFlow serial numbers visible in your network. You will see at least one
-hub instance ("HB-xxxxxxxx") and either one Tempest instance ("ST-xxxxxxxx") or the
-Sky and Air instances ("SK-xxxxxxxx" and "AR-xxxxxxxx"). Most likely you will only see
-your own devices, otherwise see the stickers on your hardware to figure out the
-serial numbers. Then apply these to the module:
-<br><br>
-Example: <code>attr wetterstation serials HB-xxxxxxxx ST-xxxxxxxx</code>
-<br><br>
-</ul>
+  After defining the device, watch the "known_serials" reading which will collect all
+  WeatherFlow serial numbers visible in your network. You will see at least one
+  hub instance ("HB-xxxxxxxx") and either one Tempest instance ("ST-xxxxxxxx") or the
+  Sky and Air instances ("SK-xxxxxxxx" and "AR-xxxxxxxx"). Most likely you will only see
+  your own devices, otherwise see the stickers on your hardware to figure out the
+  serial numbers. Then apply these to the module:
+<br>
+  <code>attr wetterstation serials HB-xxxxxxxx ST-xxxxxxxx</code>
+<br></ul>
+
 <a name="weatherflow_Attr"></a>
-<b>Attr</b>
+<h4>Attr</h4>
 <ul>
 <li>serials<br>
-The hardware serial numbers, usually important if your hub can receive more than
-one weather station. Only use one Tempest or one combination Air-Sky per instance, 
-otherwise the data will be overwritten alternately. You may also include
-hub serial number to read corresponding data.
+  The hardware serial numbers, usually important if your hub can receive more than
+  one weather station. Only use one Tempest or one combination Air-Sky per instance, 
+  otherwise the data will be overwritten alternately. You may also include
+  hub serial number to read corresponding data. </li>
 <li>altitude<br>
-This value is needed to derive <i>sea level pressure</i> from the measured
-<i>station_pressure</i>. If unset, the <i>altitude</i> attribute in the 
-<a href="#global">global device</a> is used, so consider to set the correct
-altitude there. On the other hand, you may overwrite this value here (eg. if
-your stations altitude differs from the global value). 
+  This value is needed to derive <i>sea level pressure</i> from the measured
+  <i>station_pressure</i>. If unset, the <i>altitude</i> attribute in the 
+  <a href="#global">global device</a> is used, so consider to set the correct
+  altitude there. <br>
+  On the other hand, you may want to overwrite this value here (eg. if
+  your stations altitude differs from the global value). </li> 
 <li>port<br>
-WeatherFlow data is usually transmitted on udp/50222, however, you may change here
-if needed.</li>
+  WeatherFlow data is usually transmitted on udp/50222, however, you may change here
+  if needed.</li>
 <li><a href="#disable">disable</a></li>
 <li><a href="#disabledForIntervals">disabledForIntervals</a></li>
 </ul><br>
+
 =end html
 
 =begin html_DE
+
 <a name="WeatherFlow"></a>
 <h3>WeatherFlow</h3>
 <ul>
-  Dieses Modul emfaengt Broadcast-Nachrichten, die von einem WeatherFlow-Hub gesendet
+  Dieses Modul emf&auml;ngt Broadcast-Nachrichten, die von einem WeatherFlow-Hub gesendet
   werden. Es wurde entwickelt und getestet fuer die 
   <a href="https://weatherflow.com/tempest-weather-system/">
-  Tempest</a>-Wetterstation, sollte aber auch mit den aelteren
-  WeatherFlow Smart Weather Stationen arbeiten.
+  Tempest</a>-Wetterstation, sollte aber auch mit der &auml;lteren
+  WeatherFlow Smart Weather Station arbeiten.<br>
   Falls Docker eingesetzt wird, muss der Port 50222/udp in den Container gemappt werden.
-<br><br>
-</ul>
+<br></ul>
+
 <a name="WeatherFlow_Define"></a>
-<b>Define</b>
+<h4>Define</h4>
 <ul>
-<code>define &lt;name&gt; weatherflow</code>
+  <code>define &lt;name&gt; weatherflow</code>
 <br><br>
-Example: <code>define wetterstation weatherflow</code>
+  Nach der Definition werden die Seriennummern alle im lokalen Netzwerk sichtbaren 
+  WeatherFlow-Geraete im Reading "known_serials" gesammelt. Darunter sollte mindestens
+  ein Hub ("HB-xxxxxxxx") and entweder ein Tempest-Sensor ("ST-xxxxxxxx") oder die
+  Sky- and Air-Sensoren  ("SK-xxxxxxxx" and "AR-xxxxxxxx") sein. Wahrscheinlich sieht
+  man nur die eigenen Devices, ansonsten helfen die Aufkleber auf der Hardware.
+  Die Seriennummern werden dann in das Modul eingetragen:
 <br><br>
-Nach der Definition werden die Seriennummern alle im lokalen Netzwerk sichtbaren 
-WeatherFlow-Geraete im Reading "known_serials" gesammelt. Darunter sollte mindestens
-ein Hub ("HB-xxxxxxxx") and entweder ein Tempest-Sensor ("ST-xxxxxxxx") oder die
-Sky- and Air-Sensoren  ("SK-xxxxxxxx" and "AR-xxxxxxxx") sein. Wahrscheinlich sieht
-man nur die eigenen Devices, ansonsten helfen die Aufkleber auf der Hardware.
-Die Seriennummern werden dann in das Modul eingetragen:
-<br><br>
-Example: <code>attr wetterstation serials HB-xxxxxxxx ST-xxxxxxxx</code>
-<br><br>
-</ul>
+  <code>attr wetterstation serials HB-xxxxxxxx ST-xxxxxxxx</code>
+<br></ul>
+
 <a name="weatherflow_Attr"></a>
-<b>Attr</b>
+<h4>Attr</h4>
 <ul>
 <li>serials<br>
-Die Hardware-Seriennummern sind wichtig, da der Hub unter Umstaenden mehrere 
-Wetterstationen empfaengt. Hier sollten nur eine Tempest ODER eine Kombination
-Air-Sky eingetragen sein, da bei mehreren Geraeten die Daten wechselseitig
-ueberschrieben werden. Auch die Hub-Seriennummer kann hinzugefuegt werden, um
-dessen Daten auslesen zu koennen.
+  Die Hardware-Seriennummern werden ben&ouml;tigt, da der Hub unter Umst&auml;nden mehrere 
+  Wetterstationen empf&auml;ngt. Hier sollten nur eine Tempest ODER eine Kombination
+  Air-Sky eingetragen sein, da bei mehreren Geraeten die Daten wechselseitig
+  &uuml;berschrieben w&uuml;rden. Auch die Hub-Seriennummer kann hinzugef&uuml;gt werden,
+  um dessen Daten auslesen zu koennen.</li>
 <li>altitude<br>
-Die Hoehe wird benoetigt, um den lokal gemessenen Luftdruck auf Meereshoehe
-umzurechnen. Ist dieser Wert hier nicht gesetzt, wird das Attribut
-<i>altitude</i> im <a href="#global">global device</a> verwendet, wo er eigentlich auch
-hingehoert. Andererseits kann dieser Wert hier ueberschrieben werden (z.B. falls die
-Hoehe der Wetterstation sich von der global gesetzten Hoehe stark unterscheidet).
+  Mit Hilfe der H&ouml;henangabe wird der lokal gemessene Luftdruck auf das
+  &Auml;quivalent bei Meeresh&ouml;he umgerechnet. Normalerweise sollte dieser Wert
+  im Attribut <i>altitude</i> im <a href="#global">global device</a> stehen.<br>
+  An dieser Stelle kann dieser Wert &uuml;berschrieben werden (z.B. falls die H&ouml;he
+  der Wetterstation sich von der global gesetzten H&ouml;he stark unterscheidet).</li>
 <li>port<br>
-Normalerweise uebertraegt der WeatherFlow-Hub auf udp/50222, aber falls noetig, kann
-dies hier geaendert werden.</li>
+  Normalerweise erwarten wir WeatherFlow-Daten auf udp/50222, aber falls erforderlich kann
+  dies hier ge&auml;ndert werden.</li>
 <li><a href="#disable">disable</a></li>
 <li><a href="#disabledForIntervals">disabledForIntervals</a></li>
-</ul><br>
+</ul>
 =end html_DE
 
 =cut
