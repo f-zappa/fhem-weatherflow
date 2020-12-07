@@ -9,10 +9,14 @@
 # #####
 # Author: Uli Baumann <fhem at uli-baumann dot de>
 # Source: https://github.com/f-zappa/fhem-weatherflow
+# Forum:  https://forum.fhem.de/index.php/topic,116095.0.html
 # API reference: https://weatherflow.github.io/Tempest/api/udp/v143/
 #
 # #####
 # version history
+# v0.3 2020-12-07
+# * fixed crash when rain starts
+# * don't use "ReusePort" anymore
 # v0.2 2020-11-23
 # * documentation was improved
 # v0.1 2020-11-22
@@ -70,7 +74,9 @@ sub weatherflow_startListener($) {
   $hash->{PORT} = 50222; # weatherflow hub broadcasts on port 50222
   $hash->{PORT} = AttrVal($name, 'port', $hash->{PORT});
   Log3 $name, 3, "$name: using port $hash->{PORT}";
-  if( my $socket = IO::Socket::INET->new(LocalPort=>$hash->{PORT}, Proto=>'udp', ReusePort=>1) ) {
+  # ReusePorts probably not necessary; fails on some systems
+  # if( my $socket = IO::Socket::INET->new(LocalPort=>$hash->{PORT}, Proto=>'udp', ReusePort=>1) ) {
+  if( my $socket = IO::Socket::INET->new(LocalPort=>$hash->{PORT}, Proto=>'udp') ) {
     readingsSingleUpdate($hash, 'state', 'listening', 1 );
     Log3 $name, 3, "$name: listening";
     $hash->{LAST_CONNECT} = FmtDateTime( gettimeofday() );
@@ -133,7 +139,7 @@ sub weatherflow_Parse($$;$) {
     given($message->{type}) {
       # update readings according to message type
       when("evt_precip") { # RAIN START EVENT
-        singleReadingsUpdate($hash,"precip_started",$message->{evt},1);
+        readingsSingleUpdate($hash,"precip_started",$message->{evt},1);
       }
       when("rapid_wind") { # RAPID WIND
         readingsBeginUpdate($hash);
